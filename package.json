@@ -9,7 +9,6 @@
     "dynamodb:start": "serverless dynamodb start",
     "dynamodb:install": "serverless dynamodb install",
     "deploy": "serverless deploy -v"
-
   },
   "engines": {
     "node": ">=14.15.0"
@@ -18,8 +17,8 @@
     "@middy/core": "^2.5.3",
     "@middy/http-json-body-parser": "^2.5.3",
     "chrome-aws-lambda": "^10.1.0",
-    "dayjs": "^1.11.0",
-    "handlebars": "^4.7.7",
+    "dayjs": "^1.11.9",
+    "handlebars": "^4.7.8",
     "puppeteer-core": "^13.5.2"
   },
   "devDependencies": {

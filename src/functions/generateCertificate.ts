@@ -1,9 +1,11 @@
 import { APIGatewayProxyHandler } from "aws-lambda";
 import { document } from "../utils/dynamoDbClient";
-import * as dayjs from "dayjs";
-import * as Handlebars from "handlebars";
-import * as path from "path";
-import * as fs from "fs";
+import dayjs from "dayjs";
+import Chromium from "chrome-aws-lambda";
+import Handlebars from "handlebars";
+import path from "path";
+import fs from "fs";
+import { S3 } from "aws-sdk";
 
 interface ICreateCertificate {
   id: string;
@@ -35,20 +37,6 @@ const compileTemplate = async (data: ITemplate) => {
 export const handler: APIGatewayProxyHandler = async (event) => {
   const { id, name, grade } = JSON.parse(event.body) as ICreateCertificate;
 
-  console.log(id, name, grade);
-
-  await document
-    .put({
-      TableName: "users_certificate",
-      Item: {
-        id,
-        name,
-        grade,
-        created_at: new Date().getTime(),
-      },
-    })
-    .promise();
-
   const response = await document
     .query({
       TableName: "users_certificate",
@@ -59,22 +47,76 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     })
     .promise();
 
-    const medalPath = path.join(process.cwd(), "src", "templates", "selo.png")
+  const existentUser = response.Items[0];
 
-    const medal = fs.readFileSync(medalPath, "base64")
+  if (!existentUser) {
+    await document
+      .put({
+        TableName: "users_certificate",
+        Item: {
+          id,
+          name,
+          grade,
+          created_at: new Date().getTime(),
+        },
+      })
+      .promise();
+  }
+
+  const medalPath = path.join(process.cwd(), "src", "templates", "selo.png");
+
+  const medal = fs.readFileSync(medalPath, "base64");
 
   const data: ITemplate = {
     name,
     id,
     grade,
     date: dayjs().format("DD/MM/YYYY"),
-    medal
+    medal,
   };
 
   const content = await compileTemplate(data);
 
+  const browser = await Chromium.puppeteer.launch({
+    args: Chromium.args,
+    defaultViewport: Chromium.defaultViewport,
+    executablePath: await Chromium.executablePath,
+  });
+
+  const page = await browser.newPage();
+
+  await page.setContent(content);
+  const pdf = await page.pdf({
+    format: "a4",
+    landscape: true,
+    printBackground: true,
+    preferCSSPageSize: true,
+    path: process.env.IS_OFFLINE ? "./certificate.pdf" : null,
+  });
+
+  await browser.close();
+
+  const s3 = new S3();
+
+  // await s3.createBucket({
+  //   Bucket: "api-rentx-alan-junqueira"
+  // }).promise()
+
+  await s3
+    .putObject({
+      Bucket: "api-rentx-alan-junqueira",
+      Key: `${id}.pdf`,
+      ACL: "public-read",
+      Body: pdf,
+      ContentType: "application/pdf",
+    })
+    .promise();
+
   return {
     statusCode: 201,
-    body: JSON.stringify(response.Items[0]),
+    body: JSON.stringify({
+      message: "Certificado criado com sucesso!",
+      url: `url-do-bucket/${id}.pdf`
+    }),
   };
 };
